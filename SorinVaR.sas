@@ -22,12 +22,34 @@ run;
    data &ouputDS.;
       set inputDS.;
 
-      for i = 1 to &simCount. do;
+      /* Figure pout the parameters */
+      /* For lognormal, there is a condition that needs to */
+      /* be met, otherwise, the input is meaningless.      */
+      /* The condition is that:                            */
+      /* Probit(MaxLevel)^2 > 2 x ln(SevMax/SevMean)       */
+      /* In that case:                                     */ 
+      /* sigma = Probit(MaxLevel) +                        */
+      /*         + (-)Sqrt[                                */
+      /*                   Probit(MaxLevel)^2              */
+      /*                   - 2 ln(SevMax/SevMean)          */
+      /*                     ]                             */
+      /* mu = ln(SevMax) - sigma Probit(MaxLevel)          */
+      
+      do i = 1 to &simCount.;
+         total_loss = 0;
          simFreq = rand("POISSON", Freq);
-         
-         for j = 1 to simFreq do;
-            rand(
+      
+         do j = 1 to simFreq;
+            total_loss = total_loss + RAND('WEIBULL', a, b);
          end;
       end;
-
+   run;
 %mend VaR_Me_This_Mon_Homme;
+
+
+data _NULL_;
+   do x= 1 to 30 do;
+      y = probit(x/31);
+      put y=;
+   end;
+run;
