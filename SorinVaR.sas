@@ -40,6 +40,7 @@ run;
 /* are needed to extend to other */
 /* distribution XXX.             */
 
+/* LOGN severity model */
 %macro Params_LOGN(v1, v2, p);
     param_1 = log(&v1.);
     param_2 = log(&v2. / &v1.)/probit(&p.);
@@ -49,6 +50,8 @@ run;
     &loss = exp(rand("NORMAL") * Param_2 + Param_1);
 %mend SimLOGN;
 
+
+/* WBL severity model */
 %macro Params_WBL(v1, v2, p);
     param_1 = log(log(.5) / log(1 - &p.)) / log(&v1. / &v2.);    
     param_2 = &v1. / (-log(.5))**(1/param_1);
@@ -126,10 +129,10 @@ options append=(cmplib=work.utils);
    run;
 
    data _NULL_;
-      set &inputDS.;
+      set &inputDS. end = last;
       length str $128;
-      
       file tmpDummy;
+
       str = '%Params_' || strip(SevModel) || '(' || strip(SevMedian) || ',' || strip(SevLikeMax) || ',' || strip(LikeMaxLevel) || ');';
       put str;
 
@@ -141,24 +144,32 @@ options append=(cmplib=work.utils);
 
       put "   ";
       put "   do j = 1 to simFreq;";
+
       str =     '      %Sim' || strip(SevModel) || '( loss );';
       put str;
+
       put "      ";
       put "      total_loss = total_loss + loss;";
       put "   end;";
       put "   ;";
+
       str = '   index = ' || _N_ || ";";
       put str;
-      /*
-      put "   losses[i] = total_loss;";
-      */
+      
+      str = '   losses[i,' || _N_ || '] = total_loss;";
+      put str;
+
       put "   output;";
       put "end;";
       put "/*-------------------------------------*/;";
+
+      if last then do;
+         call symputx("modelCount", _N_ );
+      end;
    run;
 
    data &ouputDS.;
-      array losses(&simCount.) _temporary_;
+      array losses(&simCount., &modelCount.) _temporary_;
       %include "&codeFilePath";
       /* Figure out the parameters                         */
       
@@ -177,30 +188,17 @@ options append=(cmplib=work.utils);
       /* mu = ln(SevMax) - sigma Probit(MaxLevel)          */
    run;
 
-   proc sort data=&ouputDS.;
+   proc sort data = &ouputDS.;
       by i index;
    run;
 
-   proc transpose data= &ouputDS.(keep=loss i index) out=atr(drop=_NAME_) prefix=loss_;
+   proc transpose data = &ouputDS.(keep=loss i index) out=atr(drop=_NAME_) prefix=loss_;
       by i;
       id index;
    run;
 %mend riskEval;
 
 %macro Var_without(input, nreps);
-   data output; 
-      set input end=last;
-      array mat[&nreps, 1] _temporary_ ( &NUM_CELLS_NREPS * 0);
-
-      length index 8;
-      length key $8;
-      length data $8;
-      index = data;
-
-      do col = 1 to &num_cells_P1;
-         mat[_REP_, col] + loss;
-      end;
-
       if last then do;      /* Calculate var without   */
          do col = 1 to &num_cells_P1;
             call orva_sort_mat( mat, col );
@@ -213,47 +211,15 @@ options append=(cmplib=work.utils);
                g = &distortion(Fn);
                g = &distortion(Fn, &distortionparam);
 
-               %if &useCapitalAtRisk = true %then %do;
-                  g = g-Fn;
-               %end;
+               
 
                Delta   = g-lastg;
                risk    = risk + loss * delta;
                lastg = g;
             end; /* do n = 1 to &nreps; */
 
-         /* Store the number away so we can compute the marginals*/
-         risk_measures[col] = risk;
-      end; /* do col = 1 to &num_cells_P1; */
-      
-      /* Risk measure from the total cell */
-      total_risk = risk_measures[&num_cells_P1]; 
-
-       /* compute marginal risks */
-      total_marginal = 0;
-      do col = 1 to &num_cells;
-         risk_measures[col] = total_risk - risk_measures[col] ;
-         total_marginal + risk_measures[col];
-      end;
-
-      /* Now compute porportions ---------*/
-      do col = 1 to &num_cells;
-         if total_marginal = 0 then do; 
-            risk_measures[col] = 0;
-         end;
-         else do;
-            risk_measures[col] = &totalproportion * risk_measures[col]/total_marginal;
-         end;
-      end;
-
-      /* output proportions ---------------*/
-      keep CCUID proportion;
-
-      do col = 1 to &num_cells;
-         CCUID = scan("&CELLS", col);
-         proportion = risk_measures[col];
-         output;
-      end;
+         
+      end; /* do col = 1 to &num_cells_P1; */    
    end;   /* if last ---------------*/
 run;
 
