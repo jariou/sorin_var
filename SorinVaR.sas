@@ -32,15 +32,15 @@ data models;
    output;
 run;
 
-/* Distribution model supported  */
-/* LOGN : Lognormal              */
-/* WBL  : Weibull                */
+/* Severity distribution models supported    */
+/* LOGN : Lognormal                          */
+/* WBL  : Weibull                            */
 
-/* Macros Params_XXX and Sim_XXX */
-/* are needed to extend to other */
-/* distribution XXX.             */
+/* To extend to other to other distributions */
+/* macros Params_XXX and Sim_XXX are need to */
+/* be written for each model XXX             */ 
 
-/* LOGN severity model */
+/* Lognormal severity model */
 %macro Params_LOGN(v1, v2, p);
     param_1 = log(&v1.);
     param_2 = log(&v2. / &v1.)/probit(&p.);
@@ -50,8 +50,7 @@ run;
     &loss = exp(rand("NORMAL") * Param_2 + Param_1);
 %mend SimLOGN;
 
-
-/* WBL severity model */
+/* Weibull severity model */
 %macro Params_WBL(v1, v2, p);
     param_1 = log(log(.5) / log(1 - &p.)) / log(&v1. / &v2.);    
     param_2 = &v1. / (-log(.5))**(1/param_1);
@@ -62,42 +61,47 @@ run;
 %mend SimWBL;
 
 /* Some useful FCMP functions */
-
 proc fcmp outlib = work.utils.var;
-
    /*- Shell sort ------------------*/
-   subroutine orva_sort_mat( mat[*,*], col);
+   subroutine sort_matrix( mat[*,*], col);
       outargs mat;
-   
+
       inc = 1;
-      n = dim1(mat);
-                /*Determine the starting increment */
+      n   = dim1(mat);
+
+      /*Determine the starting increment */
       do while ( inc <= n);
-         inc = inc*3;
-         inc +=1;
+         inc = inc * 3;
+         inc += 1;
       end;
-      
-      do while (inc > 1);      /* begin the main loop */
-   
-         inc = floor(inc/ 3);
-         do i = inc+1 to n;
+
+      /* begin the main loop */
+      do while (inc > 1);      
+         inc = floor(inc / 3);
+
+         do i = inc + 1 to n;
             v = mat[i, col];
             j = i;
-          t =  mat[j-inc , col];
+            t =  mat[j - inc , col];
+
             do while (t > v);
-               mat[j, col] = mat[j-inc, col];
+               mat[j, col] = mat[j - inc, col];
                j = j - inc;
-               if j <= inc then goto next;
-               t =  mat[j-inc , col];
+
+               if j <= inc 
+               then goto next;
+
+               t =  mat[j - inc , col];
             end;
-      next:      mat[j, col]=v;
+
+   next:    mat[j, col] = v;
          end;
       end;
    endsub;
 
    /*- Declare distortion functions ----------------------------------*/
    function VaR95(x)
-            label="Value at risk at the 95% quantile";
+            label = "Value at risk at the 95% quantile";
       if x<.95 then do;
          return(0);
       end;
@@ -107,12 +111,12 @@ proc fcmp outlib = work.utils.var;
    endsub;
    
    function CVaR95(x)
-            label="Mean excess over the VaR at the 95% quantile";
+            label = "Mean excess over the VaR at the 95% quantile";
       if x<.95 then do;
          return(0);
       end;
       else do;
-         return((x-.95)/(1-.95));
+         return((x - .95)/(1 - .95));
       end;
    endsub;
 run;
@@ -120,10 +124,12 @@ run;
 /*
 options append=(cmplib=work.utils);   
 */
+options cmplib = work.utils;   
 
+/* The riskEval macro below writes out sikmulation code into this file */
 %let codeFilePath = c:/junk/dummy.txt;
 
-%macro riskEval(inputDS, simCount, riskFunction, ouputDS);
+%macro riskEval(inputDS, simCount, riskFunction, riskName, ouputDS);
    data _NULL_;
       rc = filename("tmpDummy","&codeFilePath");
    run;
@@ -133,18 +139,23 @@ options append=(cmplib=work.utils);
       length str $128;
       file tmpDummy;
 
+      /* Get the severity parameters corresponding to the quantiles provided */
       str = '%Params_' || strip(SevModel) || '(' || strip(SevMedian) || ',' || strip(SevLikeMax) || ',' || strip(LikeMaxLevel) || ');';
       put str;
 
+      /* Do the simulation */
       put "do i = 1 to &simCount.;";
       put "   total_loss = 0;";
 
+      /* Simulate the frequency, i.e. the number of events/losses */
       str = '   simFreq = rand("POISSON", ' || FreqMean || ');';
       put str;
 
+      /* Accumulate loss amounts for all events in this one simulation replication */
       put "   ";
       put "   do j = 1 to simFreq;";
-
+      
+      /* Simulate the loss amount for one event */
       str =     '      %Sim' || strip(SevModel) || '( loss );';
       put str;
 
@@ -156,10 +167,10 @@ options append=(cmplib=work.utils);
       str = '   index = ' || _N_ || ";";
       put str;
       
-      str = '   losses[i,' || _N_ || '] = total_loss;";
+      /* Store the simulatred agfgregate loss amounts in an array */
+      str = '   losses[i,' || _N_ || '] = total_loss;';
       put str;
 
-      put "   output;";
       put "end;";
       put "/*-------------------------------------*/;";
 
@@ -170,59 +181,65 @@ options append=(cmplib=work.utils);
 
    data &ouputDS.;
       array losses(&simCount., &modelCount.) _temporary_;
+      array risks(&modelCount.) _temporary_;
+
       %include "&codeFilePath";
-      /* Figure out the parameters                         */
-      
-      *&Model._Params(sevMedian, sevLikeMax, LikeMaxLevel);
-      /* For lognormal, there is a condition that needs to */
-      /* be met, otherwise, the input is meaningless.      */
+      %ApplyRiskMeasure(
+                        losses, 
+                        &simCount., 
+                        &modelCount., 
+                        &riskFunction.,
+                        risks
+                        );
 
-      /* The condition is that:                            */
-      /* Probit(MaxLevel)^2 > 2 x ln(SevMax/SevMean)       */
-      /* In that case:                                     */ 
-      /* sigma = Probit(MaxLevel) +                        */
-      /*         + (-)Sqrt[                                */
-      /*                   Probit(MaxLevel)^2              */
-      /*                   - 2 ln(SevMax/SevMean)          */
-      /*                     ]                             */
-      /* mu = ln(SevMax) - sigma Probit(MaxLevel)          */
-   run;
+      do i = 1 to &modelCount.;
+         &riskName. = risks[i];
+         output;
+      end;
 
-   proc sort data = &ouputDS.;
-      by i index;
-   run;
-
-   proc transpose data = &ouputDS.(keep=loss i index) out=atr(drop=_NAME_) prefix=loss_;
-      by i;
-      id index;
+      keep  &riskName.;
    run;
 %mend riskEval;
 
-%macro Var_without(input, nreps);
-      if last then do;      /* Calculate var without   */
-         do col = 1 to &num_cells_P1;
-            call orva_sort_mat( mat, col );
-            risk  = 0;
-            lastg = 0;
+%macro ApplyRiskMeasure(
+                        lossArrayRef, 
+                        lossArrayRowCount, 
+                        lossArrayColCount, 
+                        riskFunction, 
+                        resultArrayRef
+                        );
 
-            do n    = 1 to &nreps;
-               Fn   = n/&nreps;
-               loss = mat[n, col];
-               g = &distortion(Fn);
-               g = &distortion(Fn, &distortionparam);
+   do col = 1 to &lossArrayColCount.;
+      call sort_matrix( &lossArrayRef., col );
+      risk  = 0;
+      lastg = 0;
 
-               
+      do n    = 1 to &lossArrayRowCount.;
+         Fn   = n / &lossArrayRowCount.;
+         loss = &lossArrayRef.[n, col];
+         g    = &riskFunction.(Fn);
+   
+         Delta   = g - lastg;
+         risk    = risk + loss * delta;
+         lastg   = g;
+      end; 
 
-               Delta   = g-lastg;
-               risk    = risk + loss * delta;
-               lastg = g;
-            end; /* do n = 1 to &nreps; */
+      &resultArrayRef.[col] = risk;
+   end; 
+%mend ApplyRiskMeasure;
 
-         
-      end; /* do col = 1 to &num_cells_P1; */    
-   end;   /* if last ---------------*/
-run;
+/* For lognormal, there is a condition that needs to */
+/* be met, otherwise, the input is meaningless.      */
+/* The condition is that:                            */
+/* Probit(MaxLevel)^2 > 2 x ln(SevMax/SevMean)       */
+/* In that case:                                     */ 
+/* sigma = Probit(MaxLevel) +                        */
+/*         + (-)Sqrt[                                */
+/*                   Probit(MaxLevel)^2              */
+/*                   - 2 ln(SevMax/SevMean)          */
+/*                     ]                             */
+/* mu = ln(SevMax) - sigma Probit(MaxLevel)          */
 
-%mend;
 
-%VaR_Me_This_Mon_Homme(this_needs_to_be_VaRed, 10, .95, abcd);
+
+%riskEval(models, 10, VaR95, VaR95 abcd);
