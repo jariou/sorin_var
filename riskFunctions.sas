@@ -57,6 +57,84 @@
             return((x - .95)/(1 - .95));
          end;
       endsub;
+      
+      function _VaR_(x,param)
+              label="Value at risk at the user given quantile";
+   
+         if param LE 0 or param GE 1 then return(.);
+   
+   	   if x < param then do;
+   	       return(0);
+   	   end;
+   	   else do;
+                  return(1);
+   	   end;
+      endsub;
+      
+      function CVaR(x,param)
+               label="Mean excess over the VaR at the user provided quantile";
+   
+      	if param LE 0 or param GE 1 then return(.);
+   
+      	if x < param then do;
+   	   	return( 0);
+      	end;
+      	else do;
+   	   	return((x-param)/(1-param));
+      	end;
+      endsub;
+   
+      function Dual_Block_Minima(x,param)
+              label="Dual of mimimum among the given number of independent uniform draws";
+   
+         if (param GE 1) or (param LE 0) then return(.);
+         
+      	return(1-(1-x)**param);
+      endsub;
+   
+      function Block_Maxima(x,param)
+               label="Dual of maximum among the given number of independent uniform draws";
+         if param LE 1 then return(.);
+      	return( x**param);
+      endsub;
+   
+      function Wang_Transform_Q(x,param)
+         label="Wang Transform parameterized through the given quantile";
+   
+   	   /* Quantile should be positive to assure convex distortion */
+      	if param LE 0 then return(.);
+   
+      	if x < 1.0 then do;
+   	   	if x > 0 then do;
+   		   	return(  probnorm(probit(x)-param));
+      		end;
+      		else do;
+   	   		return(0);
+   		   end;
+      	end;
+      	else do;
+   	   	return(  1.0);
+      	end;
+      endsub;
+   
+      function Wang_Transform_P(x,param)
+         label="Wang Transform, parameterized through probability";
+   
+   	   /* Test ensure the distortion is convex and well defined */
+         if param LE 0.5 or param GE 1 then return(.);
+   
+      	if x < 1.0 then do;
+   	   	if x > 0 then do;
+   		   	return( probnorm(probit(x)-probit(param)));
+      		end;
+      		else do;
+   	   		return(0);
+   		   end;
+      	end;
+      	else do;
+   	   	return( 1.0);
+      	end;
+      endsub;
    run;
    
    options append =(cmplib = &library..&dataset.);   
