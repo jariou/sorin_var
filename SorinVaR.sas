@@ -121,12 +121,12 @@ proc fcmp outlib = work.utils.var;
    endsub;
 run;
 
-/*
-options append=(cmplib=work.utils);   
-*/
-options cmplib = work.utils;   
 
-/* The riskEval macro below writes out sikmulation code into this file */
+options append=(cmplib=work.utils);   
+
+
+
+/* The riskEval macro below writes out simulation code into this file */
 %let codeFilePath = c:/junk/dummy.txt;
 
 %macro riskEval(inputDS, simCount, riskFunction, riskName, ouputDS);
@@ -242,4 +242,4 @@ options cmplib = work.utils;
 
 
 
-%riskEval(models, 10, VaR95, VaR95 abcd);
+%riskEval(models, 10, VaR95, VaR95, abcd);
