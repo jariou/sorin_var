@@ -21,6 +21,21 @@
   %macro Sim_LOGN(loss);
       &loss = exp(rand("NORMAL") * Param_2 + Param_1);
   %mend SimLOGN;
+  
+/*  For lognormal, there may be a condition that needs to */
+/*  be met, for the input to be meaningful.               */
+/*                                                        */
+/*  The condition is that:                                */
+/*  Probit(MaxLevel)^2 > 2 x ln(SevMax/SevMean)           */
+/*                                                        */
+/*  In that case:                                         */ 
+/*  sigma = Probit(MaxLevel) +                            */
+/*          + (-)Sqrt[                                    */
+/*                    Probit(MaxLevel)^2                  */
+/*                    - 2 ln(SevMax/SevMean)              */
+/*                      ]                                 */
+/*  mu = ln(SevMax) - sigma Probit(MaxLevel)              */
+/* I need to double check that restriction                */  
 /******************************************************************/
 
 /******************************************************************/
