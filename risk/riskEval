@@ -1,0 +1,106 @@
+%macro riskEval(
+                inputDS,            /* input models dataset                                 */  
+                simCount,           /* number of simulations to be run                      */
+                riskFunction,       /* name of fcmp risk function to evaluate               */
+                riskName,           /* name to use to display the risk calculation          */
+                ouputDS             /* name of one column dataset containng the risk number */ 
+                );
+   /* The riskEval macro below writes out sikmulation code into this file */
+   %let codeFilePath = c:/junk/dummy.txt;
+   data _NULL_;
+      rc = filename("tmpDummy","&codeFilePath");
+   run;
+
+   data _NULL_;
+      set &inputDS. end = last;
+      length str $128;
+      file tmpDummy;
+
+      /* Get the severity parameters corresponding to the quantiles provided */
+      str = '%Params_' || strip(SevModel) || '(' || strip(SevMedian) || ',' || strip(SevLikeMax) || ',' || strip(LikeMaxLevel) || ');';
+      put str;
+
+      /* Do the simulation */
+      put "do i = 1 to &simCount.;";
+      put "   total_loss = 0;";
+
+      /* Simulate the frequency, i.e. the number of events/losses */
+      str = '   simFreq = rand("POISSON", ' || FreqMean || ');';
+      put str;
+
+      /* Accumulate loss amounts for all events in this one simulation replication */
+      put "   ";
+      put "   do j = 1 to simFreq;";
+      
+      /* Simulate the loss amount for one event */
+      str =     '      %Sim' || strip(SevModel) || '( loss );';
+      put str;
+
+      put "      ";
+      put "      total_loss = total_loss + loss;";
+      put "   end;";
+      put "   ;";
+
+      str = '   index = ' || _N_ || ";";
+      put str;
+      
+      /* Store the simulatred agfgregate loss amounts in an array */
+      str = '   losses[i,' || _N_ || '] = total_loss;';
+      put str;
+
+      put "end;";
+      put "/*-------------------------------------*/;";
+
+      if last then do;
+         call symputx("modelCount", _N_ );
+      end;
+   run;
+
+   data &ouputDS.;
+      array losses(&simCount., &modelCount.) _temporary_;
+      array risks(&modelCount.) _temporary_;
+
+      %include "&codeFilePath";
+      %ApplyRiskMeasure(
+                        losses, 
+                        &simCount., 
+                        &modelCount., 
+                        &riskFunction.,
+                        risks
+                        );
+
+      do i = 1 to &modelCount.;
+         &riskName. = risks[i];
+         output;
+      end;
+
+      keep  &riskName.;
+   run;
+%mend riskEval;
+
+%macro ApplyRiskMeasure(
+                        lossArrayRef, 
+                        lossArrayRowCount, 
+                        lossArrayColCount, 
+                        riskFunction, 
+                        resultArrayRef
+                        );
+
+   do col = 1 to &lossArrayColCount.;
+      call sort_matrix( &lossArrayRef., col );
+      risk  = 0;
+      lastg = 0;
+
+      do n    = 1 to &lossArrayRowCount.;
+         Fn   = n / &lossArrayRowCount.;
+         loss = &lossArrayRef.[n, col];
+         g    = &riskFunction.(Fn);
+   
+         Delta   = g - lastg;
+         risk    = risk + loss * delta;
+         lastg   = g;
+      end; 
+
+      &resultArrayRef.[col] = risk;
+   end; 
+%mend ApplyRiskMeasure;
