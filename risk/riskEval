@@ -44,7 +44,7 @@
       str = '   index = ' || _N_ || ";";
       put str;
       
-      /* Store the simulatred agfgregate loss amounts in an array */
+      /* Store the simulated aggregate loss amounts in an array */
       str = '   losses[i,' || _N_ || '] = total_loss;';
       put str;
 
