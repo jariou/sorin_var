@@ -31,6 +31,9 @@ data models;
    output;
 run;
 
+%global codeFilePath;
+%let codeFilePath = c:/tmp/dummy.txt;
+
 /* Instantiate risk functions               */
 %riskFunctions;
 
