@@ -5,8 +5,9 @@
                 riskName,           /* name to use to display the risk calculation          */
                 ouputDS             /* name of one column dataset containng the risk number */ 
                 );
-   /* The riskEval macro below writes out sikmulation code into this file */
-   %let codeFilePath = c:/junk/dummy.txt;
+   /* The riskEval macro below writes out simulation code into this file */
+   %global codeFilePath;
+   
    data _NULL_;
       rc = filename("tmpDummy","&codeFilePath");
    run;
